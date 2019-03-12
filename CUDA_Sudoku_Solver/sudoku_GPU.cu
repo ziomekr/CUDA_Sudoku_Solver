@@ -58,7 +58,12 @@ void copy_sudoku(char* src_sudoku, char* dest_sudoku) {
 		*(dest_sudoku + i) = *(src_sudoku + i);
 	}
 }
-
+__device__ void fill_masks(int* masks) {
+	*masks = 0;
+	for (int i = 0; i < DIMENSION; i++) {
+		*(masks + i + 1) = 2 << i;
+	}
+}
 
 __global__
 void generate_next_permutations(char* sudokus_arr, char* sudoku_arr_new_permutations, int* number_of_old_permutations, int* number_of_permutations, int empty_cell){
@@ -67,19 +72,10 @@ void generate_next_permutations(char* sudokus_arr, char* sudoku_arr_new_permutat
 	__shared__ int masks[DIMENSION + 1];
 	__shared__ int valid_numbers[BLOCK_DIMENSION];
 	
-	
+	fill_masks(masks);
+
+
 	while (tIdx < *number_of_old_permutations) {
-		
-		masks[0] = 0;
-		masks[1] = 2;
-		masks[2] = 4;
-		masks[3] = 8;
-		masks[4] = 16;
-		masks[5] = 32;
-		masks[6] = 64;
-		masks[7] = 128;
-		masks[8] = 256;
-		masks[9] = 512;
 		
 		
 		valid_numbers[threadIdx.x] = get_valid_numbers(sudokus_arr, tIdx * DIMENSION * DIMENSION + empty_cell, tIdx, masks);
@@ -97,6 +93,11 @@ void generate_next_permutations(char* sudokus_arr, char* sudoku_arr_new_permutat
 	}
 	
 	
+}
+
+__global__ void backtrackigKernel(char * sudokus_arr, int number_of_permutations, int current_sudoku_index, int empty_cell)
+{
+	return void();
 }
 
 

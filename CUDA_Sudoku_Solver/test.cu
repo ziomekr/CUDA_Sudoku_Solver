@@ -38,7 +38,7 @@ int main()
 	solve_sudoku(sudoku2);
 	solve_sudoku(sudoku3);
 	solve_sudoku(sudoku4);
-
+	printf("%d ", 1<<0);
 	return 0;
 
 }
