@@ -110,12 +110,11 @@ __global__ void backtrackigKernel(char* sudokus_arr, int number_of_permutations,
 	__shared__ int valid_numbers[BLOCK_DIMENSION];
 	__shared__ int empty_cells_offsets[BLOCK_DIMENSION];
 	fill_masks(masks);
-	
 	int sudoku_index = atomicAdd(current_sudoku_index, 1);
-	
+	int sudokus_arr_idx = sudoku_index * DIMENSION * DIMENSION;
 	while ((sudoku_index < number_of_permutations) && !solved) {
 		
-		valid_numbers[threadIdx.x] = get_valid_numbers(sudokus_arr, sudoku_index * DIMENSION * DIMENSION + *(empty_cells + empty_cells_offsets[threadIdx.x]), sudoku_index * DIMENSION * DIMENSION, masks);
+		valid_numbers[threadIdx.x] = get_valid_numbers(sudokus_arr, sudokus_arr_idx + *(empty_cells + empty_cells_offsets[threadIdx.x]), sudokus_arr_idx, masks);
 		
 		empty_cells_offsets[threadIdx.x] = 0;
 		
@@ -123,12 +122,12 @@ __global__ void backtrackigKernel(char* sudokus_arr, int number_of_permutations,
 		
 			if ((masks[i] & (~valid_numbers[threadIdx.x])) != 0) {
 				
-				sudokus_arr[*(empty_cells + empty_cells_offsets[threadIdx.x])] = (char)i;
+				sudokus_arr[sudokus_arr_idx + *(empty_cells + empty_cells_offsets[threadIdx.x])] = (char)i;
 				empty_cells_offsets[threadIdx.x] += 1;
 				
 				if (empty_cells_offsets[threadIdx.x] < empty_cells_count) {					
 					i = 0;					
-					valid_numbers[threadIdx.x] = get_valid_numbers(sudokus_arr, sudoku_index * DIMENSION * DIMENSION + *(empty_cells + empty_cells_offsets[threadIdx.x]), sudoku_index * DIMENSION * DIMENSION, masks);
+					valid_numbers[threadIdx.x] = get_valid_numbers(sudokus_arr, sudokus_arr_idx + *(empty_cells + empty_cells_offsets[threadIdx.x]), sudokus_arr_idx, masks);
 				}
 				else {
 					solved = true;
@@ -137,14 +136,14 @@ __global__ void backtrackigKernel(char* sudokus_arr, int number_of_permutations,
 			}
 			else {
 				while (i == DIMENSION) {
-					sudokus_arr[*(empty_cells + empty_cells_offsets[threadIdx.x])] = 0;
+					sudokus_arr[sudokus_arr_idx + *(empty_cells + empty_cells_offsets[threadIdx.x])] = 0;
 					empty_cells_offsets[threadIdx.x] -= 1;
-					i = sudokus_arr[*(empty_cells + empty_cells_offsets[threadIdx.x])];
-					sudokus_arr[*(empty_cells + empty_cells_offsets[threadIdx.x])] = 0;					
+					i = sudokus_arr[sudokus_arr_idx + *(empty_cells + empty_cells_offsets[threadIdx.x])];
+					sudokus_arr[sudokus_arr_idx + *(empty_cells + empty_cells_offsets[threadIdx.x])] = 0;
 				}
 				if (empty_cells_offsets[threadIdx.x] > -1) {
 
-					valid_numbers[threadIdx.x] = get_valid_numbers(sudokus_arr, sudoku_index * DIMENSION * DIMENSION + *(empty_cells + empty_cells_offsets[threadIdx.x]), sudoku_index * DIMENSION * DIMENSION, masks);
+					valid_numbers[threadIdx.x] = get_valid_numbers(sudokus_arr, sudokus_arr_idx + *(empty_cells + empty_cells_offsets[threadIdx.x]), sudokus_arr_idx, masks);
 				}
 				else {
 					sudoku_index = atomicAdd(current_sudoku_index, 1);
@@ -245,14 +244,14 @@ char* solve_sudokuGPU(char* sudoku) {
 	cudaEventCreate(&start);
 	cudaEventCreate(&stop);
 	cudaEventRecord(start);
-	cudaMalloc((void**)&n, DIMENSION * DIMENSION * sizeof(char));
+	cudaMalloc((void**)&n, DIMENSION * DIMENSION * sizeof(char)*10);
 	cudaMalloc((void**)&empty_c, count * sizeof(int));
 	cudaMalloc((void**)&c_i, sizeof(int));
 	
-	cudaMemcpy(n, sudoku, DIMENSION * DIMENSION * sizeof(char), cudaMemcpyHostToDevice);
+	cudaMemcpy(n, sudoku, DIMENSION * DIMENSION * sizeof(char)*10, cudaMemcpyHostToDevice);
 	cudaMemcpy(empty_c, empty, count * sizeof(int), cudaMemcpyHostToDevice);
 	cudaMemset(c_i, 0, sizeof(int));
-	backtrackigKernel << < GRID_DIMENSION, BLOCK_DIMENSION >> > (n, 1, c_i, empty_c, count, false);
+	backtrackigKernel << < GRID_DIMENSION, BLOCK_DIMENSION >> > (n, 10, c_i, empty_c, count, false);
 	cudaDeviceSynchronize();
 	err();
 	err();
