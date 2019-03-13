@@ -14,7 +14,9 @@ __device__ void fill_masks(int * masks);
 
 __global__ void generate_next_permutations(char* sudokus_arr, char* sudoku_arr_new_permutations, int* number_of_old_permutations, int* number_of_permutations, int empty_cell);
 
-__global__ void backtrackigKernel(char* sudokus_arr, int number_of_permutations, int current_sudoku_index, int empty_cell);
+__device__ void printT(char * sudoku);
+
+__global__ void backtrackigKernel(char* sudokus_arr, int number_of_permutations, int* current_sudoku_index, int* empty_cells, int empty_cells_count, bool solved);
 
 __host__ void err();
 

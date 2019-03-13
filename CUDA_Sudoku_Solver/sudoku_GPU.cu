@@ -42,9 +42,8 @@ int subsquare_used_numbers(char* sudokus_arr, int subsquare_top_left_cell, int* 
 }
 
 __device__
-int get_valid_numbers(char* sudokus_arr, int cell, int tIdx, int* masks) {
+int get_valid_numbers(char* sudokus_arr, int cell, int top_left_sudoku_cell, int* masks) {
 	int board_offset = cell % DIMENSION;
-	int top_left_sudoku_cell = tIdx * DIMENSION*DIMENSION;
 	int row = cell - board_offset;
 	int column = top_left_sudoku_cell + board_offset;
 	int subsquare_top_left_cell = cell - (cell % SUBSQUARE_DIMENSION) - (((cell - top_left_sudoku_cell) / DIMENSION) % SUBSQUARE_DIMENSION)*DIMENSION;
@@ -77,8 +76,8 @@ void generate_next_permutations(char* sudokus_arr, char* sudoku_arr_new_permutat
 
 	while (tIdx < *number_of_old_permutations) {
 		
-		
-		valid_numbers[threadIdx.x] = get_valid_numbers(sudokus_arr, tIdx * DIMENSION * DIMENSION + empty_cell, tIdx, masks);
+		int top_left_cell = tIdx * DIMENSION * DIMENSION;
+		valid_numbers[threadIdx.x] = get_valid_numbers(sudokus_arr, top_left_cell + empty_cell, top_left_cell , masks);
 	
 		
 		for (int i = 1; i < DIMENSION + 1; i++) {
@@ -95,9 +94,65 @@ void generate_next_permutations(char* sudokus_arr, char* sudoku_arr_new_permutat
 	
 }
 
-__global__ void backtrackigKernel(char * sudokus_arr, int number_of_permutations, int current_sudoku_index, int empty_cell)
+__device__ void printT(char* sudoku) {
+	printf("-----------------------------------------------------------------------\n");
+	for (int i = 0; i < DIMENSION*DIMENSION; i++) {
+		printf("%d ", sudoku[i]);
+		if (i%DIMENSION == DIMENSION - 1)
+			printf("\n");
+	}
+	printf("-----------------------------------------------------------------------\n");
+}
+
+__global__ void backtrackigKernel(char* sudokus_arr, int number_of_permutations, int* current_sudoku_index, int* empty_cells, int empty_cells_count, bool solved)
 {
-	return void();
+	__shared__ int masks[DIMENSION + 1];
+	__shared__ int valid_numbers[BLOCK_DIMENSION];
+	__shared__ int empty_cells_offsets[BLOCK_DIMENSION];
+	fill_masks(masks);
+	
+	int sudoku_index = atomicAdd(current_sudoku_index, 1);
+	
+	while ((sudoku_index < number_of_permutations) && !solved) {
+		
+		valid_numbers[threadIdx.x] = get_valid_numbers(sudokus_arr, sudoku_index * DIMENSION * DIMENSION + *(empty_cells + empty_cells_offsets[threadIdx.x]), sudoku_index * DIMENSION * DIMENSION, masks);
+		
+		empty_cells_offsets[threadIdx.x] = 0;
+		
+		for (int i = 1; i < DIMENSION + 1; i++) {
+		
+			if ((masks[i] & (~valid_numbers[threadIdx.x])) != 0) {
+				
+				sudokus_arr[*(empty_cells + empty_cells_offsets[threadIdx.x])] = (char)i;
+				empty_cells_offsets[threadIdx.x] += 1;
+				
+				if (empty_cells_offsets[threadIdx.x] < empty_cells_count) {					
+					i = 0;					
+					valid_numbers[threadIdx.x] = get_valid_numbers(sudokus_arr, sudoku_index * DIMENSION * DIMENSION + *(empty_cells + empty_cells_offsets[threadIdx.x]), sudoku_index * DIMENSION * DIMENSION, masks);
+				}
+				else {
+					solved = true;
+					break;
+				}
+			}
+			else {
+				while (i == DIMENSION) {
+					sudokus_arr[*(empty_cells + empty_cells_offsets[threadIdx.x])] = 0;
+					empty_cells_offsets[threadIdx.x] -= 1;
+					i = sudokus_arr[*(empty_cells + empty_cells_offsets[threadIdx.x])];
+					sudokus_arr[*(empty_cells + empty_cells_offsets[threadIdx.x])] = 0;					
+				}
+				if (empty_cells_offsets[threadIdx.x] > -1) {
+
+					valid_numbers[threadIdx.x] = get_valid_numbers(sudokus_arr, sudoku_index * DIMENSION * DIMENSION + *(empty_cells + empty_cells_offsets[threadIdx.x]), sudoku_index * DIMENSION * DIMENSION, masks);
+				}
+				else {
+					sudoku_index = atomicAdd(current_sudoku_index, 1);
+					break;
+				}
+			}
+		}	
+	}
 }
 
 
@@ -107,8 +162,7 @@ void err() {
 	{
 		// print the CUDA error message and exit
 		printf("CUDA error: %s\n", cudaGetErrorString(error));
-
-	}
+	}	
 }
 
 int get_empty_indices(char* sudoku, int* empty) {
@@ -121,65 +175,97 @@ int get_empty_indices(char* sudoku, int* empty) {
 	return count;
 }
 char* solve_sudokuGPU(char* sudoku) {
+//	cudaEvent_t start, stop;
+//	cudaEventCreate(&start);
+//	cudaEventCreate(&stop);
+//	
+//	int count;
+//	int empty[DIMENSION*DIMENSION];
+//	int *old_perm, *new_perm;
+//	char *n, *p;
+//	char *result;
+//	result = (char*)malloc(sizeof(char) * 81);
+//	int np = 1;
+//	cudaEventRecord(start);
+//	cudaMalloc((void**)&n, MAX_SUDOKUS_COUNT * DIMENSION * DIMENSION * sizeof(char));
+//	err();
+//	cudaMalloc((void**)&p, MAX_SUDOKUS_COUNT * DIMENSION * DIMENSION * sizeof(char));
+//	err();
+//
+//	cudaMalloc((void**)&old_perm, sizeof(int));
+//	
+//	cudaMalloc((void**)&new_perm, sizeof(int));
+//	cudaMemcpy(n, sudoku, DIMENSION * DIMENSION * sizeof(char), cudaMemcpyHostToDevice);
+//	cudaMemcpy(new_perm, &np, sizeof(int), cudaMemcpyHostToDevice);
+//
+//	count = get_empty_indices(sudoku, empty);
+//;
+//	for (int i = 0; i < count; i++) {
+//
+//
+//		cudaMemcpyAsync(old_perm, new_perm, sizeof(int), cudaMemcpyDeviceToDevice);
+//
+//		cudaMemset(new_perm, 0, sizeof(int));
+//
+//		if (~i % 2) {
+//			generate_next_permutations << <GRID_DIMENSION, BLOCK_DIMENSION >> > (n, p, old_perm, new_perm, empty[i]);
+//		}
+//		else {
+//			generate_next_permutations << <GRID_DIMENSION, BLOCK_DIMENSION >> > (p, n, old_perm, new_perm, empty[i]);
+//		}
+//		err();
+//	}
+//	if (count % 2) {
+//		cudaMemcpy(result, p, 81 * sizeof(char), cudaMemcpyDeviceToHost);
+//	}
+//	else {
+//		cudaMemcpy(result, n, 81 * sizeof(char), cudaMemcpyDeviceToHost);
+//	}
+//	cudaEventRecord(stop);
+//	cudaEventSynchronize(stop);
+//
+//	float milliseconds = 0;
+//	cudaEventElapsedTime(&milliseconds, start, stop);
+//	printf("GPU time used: %f ms\n", milliseconds);
+//	cudaFree(n);
+//	cudaFree(p);
+//
+//	cudaFree(old_perm);
+//	cudaFree(new_perm);
+
+	int count = 0;
+	int empty[DIMENSION*DIMENSION];
+	char *n;
+	int* empty_c;
+	count = get_empty_indices(sudoku, empty);
+	char* result;
+	result = (char*)malloc(sizeof(char) * 81);
+	int* c_i;
 	cudaEvent_t start, stop;
 	cudaEventCreate(&start);
 	cudaEventCreate(&stop);
-	
-	int count;
-	int empty[DIMENSION*DIMENSION];
-	int *old_perm, *new_perm;
-	char *n, *p;
-	char *result;
-	result = (char*)malloc(sizeof(char) * 81);
-	int np = 1;
 	cudaEventRecord(start);
-	cudaMalloc((void**)&n, MAX_SUDOKUS_COUNT * DIMENSION * DIMENSION * sizeof(char));
-	err();
-	cudaMalloc((void**)&p, MAX_SUDOKUS_COUNT * DIMENSION * DIMENSION * sizeof(char));
-	err();
-
-	cudaMalloc((void**)&old_perm, sizeof(int));
+	cudaMalloc((void**)&n, DIMENSION * DIMENSION * sizeof(char));
+	cudaMalloc((void**)&empty_c, count * sizeof(int));
+	cudaMalloc((void**)&c_i, sizeof(int));
 	
-	cudaMalloc((void**)&new_perm, sizeof(int));
 	cudaMemcpy(n, sudoku, DIMENSION * DIMENSION * sizeof(char), cudaMemcpyHostToDevice);
-	cudaMemcpy(new_perm, &np, sizeof(int), cudaMemcpyHostToDevice);
-
-	count = get_empty_indices(sudoku, empty);
-;
-	for (int i = 0; i < count; i++) {
-
-
-		cudaMemcpyAsync(old_perm, new_perm, sizeof(int), cudaMemcpyDeviceToDevice);
-
-		cudaMemset(new_perm, 0, sizeof(int));
-
-		if (~i % 2) {
-			generate_next_permutations << <GRID_DIMENSION, BLOCK_DIMENSION >> > (n, p, old_perm, new_perm, empty[i]);
-		}
-		else {
-			generate_next_permutations << <GRID_DIMENSION, BLOCK_DIMENSION >> > (p, n, old_perm, new_perm, empty[i]);
-		}
-		err();
-	}
-	if (count % 2) {
-		cudaMemcpy(result, p, 81 * sizeof(char), cudaMemcpyDeviceToHost);
-	}
-	else {
-		cudaMemcpy(result, n, 81 * sizeof(char), cudaMemcpyDeviceToHost);
-	}
+	cudaMemcpy(empty_c, empty, count * sizeof(int), cudaMemcpyHostToDevice);
+	cudaMemset(c_i, 0, sizeof(int));
+	backtrackigKernel << < GRID_DIMENSION, BLOCK_DIMENSION >> > (n, 1, c_i, empty_c, count, false);
+	cudaDeviceSynchronize();
+	err();
+	err();
+	cudaMemcpy(result, n, 81 * sizeof(char), cudaMemcpyDeviceToHost);
+	err();
 	cudaEventRecord(stop);
 	cudaEventSynchronize(stop);
-	
 	float milliseconds = 0;
 	cudaEventElapsedTime(&milliseconds, start, stop);
 	printf("GPU time used: %f ms\n", milliseconds);
 	cudaFree(n);
-	cudaFree(p);
-
-	cudaFree(old_perm);
-	cudaFree(new_perm);
-
-
+	cudaFree(empty_c);
+	cudaFree(c_i);
 	return result;
 
 }
