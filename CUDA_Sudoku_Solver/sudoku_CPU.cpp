@@ -6,8 +6,8 @@
 #include <cmath>
 #include <ctime>
 
-#define DIMENSION 9
-#define SUBSQUARE_DIMENSION 3
+#define DIMENSION 16
+#define SUBSQUARE_DIMENSION 4
 #define EMPTY 0
 #define SUDOKU_SOLVED -1
 
