@@ -1,7 +1,7 @@
 #pragma once
 #include <bitset>
 
-#define DIMENSION 16
+#define DIMENSION 9
 
 std::bitset<DIMENSION + 1> row_used_numbers(char* sudoku_board, int row);
 std::bitset<DIMENSION + 1> column_used_numbers(char* sudoku_board, int column);
